@@ -52,14 +52,21 @@ function stripProxyConfig() {
     }
 }
 
-function writeProxyConfig() {
+function writeProxyConfig(modelId) {
     try {
         let content = '';
         if (fs.existsSync(CONFIG_PATH)) {
             content = fs.readFileSync(CONFIG_PATH, 'utf-8');
         }
         content = content.replace(/^api_base_url\s*=.*\n?/gm, '');
-        content = 'api_base_url = "' + PROXY_API_BASE + '"\n' + content;
+        content = content.replace(/^model\s*=\s*"[^"]*"\n?/gm, '');
+        content = 'api_base_url = "' + PROXY_API_BASE + '"\nmodel = "' + modelId + '"\n' + content;
+
+        const isThinking = modelId.includes('thinking') || modelId.includes('deepseek-v4-pro') || modelId.includes('kimi-k2');
+        if (isThinking) {
+            content += 'model_reasoning_effort = "high"\nmodel_reasoning_summary = "detailed"\nmodel_supports_reasoning_summaries = true\nshow_raw_agent_reasoning = true\n';
+        }
+
         fs.writeFileSync(CONFIG_PATH, content, 'utf-8');
     } catch (e) {
         console.warn('[Proxy] Failed to write proxy config:', e.message);
@@ -74,9 +81,6 @@ process.on('SIGTERM', () => {
     stripProxyConfig();
     process.exit(0);
 });
-
-stripProxyConfig();
-writeProxyConfig();
 
 if (!NVIDIA_API_KEY) {
     console.error('[Proxy] ERROR: NVIDIA_API_KEY environment variable is required.');
@@ -138,6 +142,9 @@ function log(...args) {
 }
 
 let currentModel = getCurrentModelFromFile();
+
+stripProxyConfig();
+writeProxyConfig(currentModel || 'deepseek-ai/deepseek-v4-pro');
 
 function getCurrentModelFromFile() {
     try {
