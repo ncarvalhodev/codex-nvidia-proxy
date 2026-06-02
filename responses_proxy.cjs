@@ -2033,8 +2033,24 @@ const proxyServer = http.createServer(async (req, res) => {
             }
         });
     } else {
-        res.writeHead(404);
-        res.end('Not Found');
+        log('Passthrough:', req.method, req.url);
+        const passthrough = https.request({
+            hostname: NVIDIA_HOST,
+            port: 443,
+            path: req.url,
+            method: req.method,
+            headers: { ...req.headers, host: NVIDIA_HOST, authorization: 'Bearer ' + NVIDIA_API_KEY },
+            rejectUnauthorized: true,
+        }, (pres) => {
+            res.writeHead(pres.statusCode, pres.headers);
+            pres.pipe(res);
+        });
+        passthrough.on('error', (e) => {
+            log('Passthrough error:', e.message);
+            res.writeHead(502);
+            res.end('Bad Gateway');
+        });
+        req.pipe(passthrough);
     }
 });
 
