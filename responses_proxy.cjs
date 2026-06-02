@@ -30,34 +30,25 @@ const NVIDIA_HOST = 'integrate.api.nvidia.com';
 const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
 const PROXY_PORT = 15721;
 const CONFIG_PATH = path.join(process.env.USERPROFILE || '~', '.codex', 'config.toml');
-const CONFIG_BACKUP_PATH = CONFIG_PATH + '.backup';
 const MODEL_STATE_PATH = path.join(__dirname, 'model_state.json');
 const MODEL_LIST_PATH = path.join(__dirname, 'models.json');
 const DEBUG = (process.env.DEBUG || '').toLowerCase() === 'true';
 
-let configBackedUp = false;
+const PROXY_API_BASE = 'http://127.0.0.1:15721/v1';
 
-function restoreConfig() {
-    if (fs.existsSync(CONFIG_BACKUP_PATH)) {
-        try {
-            fs.copyFileSync(CONFIG_BACKUP_PATH, CONFIG_PATH);
-            fs.unlinkSync(CONFIG_BACKUP_PATH);
-            return true;
-        } catch (e) {
-            console.warn('[Proxy] Failed to restore config:', e.message);
+function stripProxyConfig() {
+    try {
+        if (!fs.existsSync(CONFIG_PATH)) return;
+        let content = fs.readFileSync(CONFIG_PATH, 'utf-8');
+        const before = content;
+        content = content.replace(/^api_base_url\s*=.*\n?/gm, '');
+        content = content.replace(/^(model_reasoning_effort|model_reasoning_summary|model_supports_reasoning_summaries|show_raw_agent_reasoning)\s*=.*\n?/gm, '');
+        content = content.trimEnd();
+        if (content !== before.trimEnd()) {
+            fs.writeFileSync(CONFIG_PATH, content ? content + '\n' : '', 'utf-8');
         }
-    }
-    return false;
-}
-
-function backupConfig() {
-    if (fs.existsSync(CONFIG_PATH) && !fs.existsSync(CONFIG_BACKUP_PATH)) {
-        try {
-            fs.copyFileSync(CONFIG_PATH, CONFIG_BACKUP_PATH);
-            configBackedUp = true;
-        } catch (e) {
-            console.warn('[Proxy] Failed to backup config:', e.message);
-        }
+    } catch (e) {
+        console.warn('[Proxy] Failed to strip proxy config:', e.message);
     }
 }
 
@@ -67,32 +58,24 @@ function writeProxyConfig() {
         if (fs.existsSync(CONFIG_PATH)) {
             content = fs.readFileSync(CONFIG_PATH, 'utf-8');
         }
-        if (!/^api_base_url\s*=\s*"http:\/\/127\.0\.0\.1:15721\/v1"/m.test(content)) {
-            content = content.replace(/^api_base_url\s*=.*\n?/gm, '');
-            content = 'api_base_url = "http://127.0.0.1:15721/v1"\n' + content;
-            fs.writeFileSync(CONFIG_PATH, content, 'utf-8');
-        }
+        content = content.replace(/^api_base_url\s*=.*\n?/gm, '');
+        content = 'api_base_url = "' + PROXY_API_BASE + '"\n' + content;
+        fs.writeFileSync(CONFIG_PATH, content, 'utf-8');
     } catch (e) {
         console.warn('[Proxy] Failed to write proxy config:', e.message);
     }
 }
 
-function cleanupAndExit() {
-    if (configBackedUp) {
-        restoreConfig();
-    }
+process.on('SIGINT', () => {
+    stripProxyConfig();
     process.exit(0);
-}
+});
+process.on('SIGTERM', () => {
+    stripProxyConfig();
+    process.exit(0);
+});
 
-process.on('SIGINT', cleanupAndExit);
-process.on('SIGTERM', cleanupAndExit);
-
-if (fs.existsSync(CONFIG_BACKUP_PATH)) {
-    console.log('[Proxy] Found leftover backup from previous session, restoring original config...');
-    restoreConfig();
-}
-
-backupConfig();
+stripProxyConfig();
 writeProxyConfig();
 
 if (!NVIDIA_API_KEY) {
