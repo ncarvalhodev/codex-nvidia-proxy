@@ -57,6 +57,7 @@ sequenceDiagram
 - **流式输出** — 实时 SSE 流，思考过程和正文分离显示
 - **Web 搜索** — 内置 DuckDuckGo 搜索引擎，Codex 发起搜索时代理自动执行
 - **可视化模型切换** — Web UI 面板一键换模型，自动同步 Codex 配置
+- **配置自动恢复** — 关闭代理自动恢复 Codex 原始配置，回到 OpenAI 官方模式
 - **自动重试** — 网络波动或服务繁忙时自动重试，无需手动干预
 
 ## Web UI
@@ -94,18 +95,11 @@ Windows 用户也可以直接双击 `start_proxy.bat`。
 
 ## 配置 Codex
 
-在 Codex 的 `config.toml` 中（位于 `%USERPROFILE%\.codex\config.toml`）添加：
+代理启动时会自动备份原始配置并写入 `api_base_url`，**无需手动修改 `config.toml`**。
 
-```toml
-api_base_url = "http://127.0.0.1:15721/v1"
-model = "deepseek-ai/deepseek-v4-pro"
-model_reasoning_effort = "high"
-model_reasoning_summary = "detailed"
-model_supports_reasoning_summaries = true
-show_raw_agent_reasoning = true
-```
+关闭代理（Ctrl+C）时自动恢复原始配置，Codex 回到 OpenAI 官方模式。
 
-模型切换面板会自动管理这些配置。
+模型切换通过 Web UI 一键完成，自动同步到 Codex 配置。
 
 ## 环境变量
 
