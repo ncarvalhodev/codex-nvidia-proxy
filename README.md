@@ -13,7 +13,7 @@ Codex（CLI / 桌面版）与 NVIDIA NIM 之间的透明代理，让 Codex 免�
 
 ## 支持的模型
 
-> 以下为精选推荐，**Web UI 可一键拉取 NIM 平台全部可用模型（实时，无需手动维护）**。
+> 以下为精选推荐（更新于 2026-06），**Web UI 可一键拉取 NIM 平台全部可用模型（实时，无需手动维护）**。模型可用性可能随 NIM 平台调整，以 Web UI 实时列表为准。
 
 | 模型 | 特点 |
 |------|------|
@@ -22,15 +22,15 @@ Codex（CLI / 桌面版）与 NVIDIA NIM 之间的透明代理，让 Codex 免�
 | Qwen3 Coder 480B | 专用编码模型, 35B active, 256K ctx |
 | Kimi K2.6 | 1T multimodal MoE, 长程编码 |
 | Qwen3.5 122B | 快速通用, 10B active, ~110 tok/s |
-| Qwen3 Next 80B Thinking | 80B MoE thinking 模型 |
 | MiniMax M2.7 | 230B, 编码+推理+办公 |
-| Llama 3.2 90B Vision | 最大视觉模型, 图片理解+编码 |
-| Phi-4 Multimodal | 多模态推理, 视觉+文本 |
+| GLM-5.1 | 智谱旗舰, agentic & 长程推理 |
+| Gemma 4 31B | Google 稠密模型, 编码 & agentic |
+| Nemotron Super 120B | NVIDIA 混合 Mamba-Transformer, 1M ctx, tool calling |
 | Mistral Medium 3.5 | 128B, 编码 & agentic |
 | Nemotron Super 49B | NVIDIA 调优, 编码 & tool calling |
 | Step 3.5 Flash | 200B MoE, frontier agentic |
 | Llama 3.1 405B | 最大稠密模型, 强指令跟随 |
-| Seed-OSS 36B | 字节跳动, 长上下文推理 & agentic |
+| Seed-OSS 36B | 字节跳动, 512K ctx, 长上下文推理 & agentic |
 
 ## 架构
 
@@ -59,12 +59,16 @@ sequenceDiagram
 - **可视化模型切换** — Web UI 面板一键换模型，自动同步 Codex 配置
 - **配置自动恢复** — 关闭代理自动恢复 Codex 原始配置，回到 OpenAI 官方模式
 - **自动重试** — 网络波动或服务繁忙时自动重试，无需手动干预
+- **模型黑名单** — 返回 404 的不可用模型自动屏蔽，刷新模型列表时自动清空重新测试
+- **工具调用兼容** — 自动转换 function_call 输入格式，兼容不同模型
 
 ## Web UI
 
 启动代理后访问 `http://127.0.0.1:15721/ui`：
 
 ![模型切换面板](./screenshots/ui.png)
+
+*截图更新于 2026-06*
 
 - **一键拉取最新模型** — 每次打开自动从 NVIDIA NIM 实时获取全部可用模型，始终保持最新
 - **可视化切换** — 卡片式模型列表，搜索/筛选，一键切换自动同步 Codex 配置
@@ -95,7 +99,7 @@ Windows 用户也可以直接双击 `start_proxy.bat`。
 
 ## 配置 Codex
 
-代理启动时会自动备份原始配置并写入 `api_base_url`，**无需手动修改 `config.toml`**。
+代理启动时会自动备份原始配置并写入 `model_provider` 格式，**无需手动修改 `config.toml`**。
 
 关闭代理（Ctrl+C）时自动恢复原始配置，Codex 回到 OpenAI 官方模式。
 
@@ -128,8 +132,10 @@ Invoke-WebRequest -Uri http://127.0.0.1:15721/v1/responses -Method POST -Body $b
 
 ```
 codex-nvidia-proxy/
-├── responses_proxy.cjs   # 主代理 (~1850 行单文件，零依赖)
+├── responses_proxy.cjs   # 主代理 (~2150 行单文件，零依赖)
 ├── models.json           # 模型列表配置
+├── model_state.json      # 当前选中模型（动态生成）
+├── model_blacklist.json  # 不可用模型黑名单（动态生成）
 ├── package.json          # 项目元数据（零外部依赖）
 ├── start_proxy.bat       # Windows 启动脚本
 ├── .env.example          # 环境变量模板
