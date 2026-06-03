@@ -1,5 +1,6 @@
 .env
 model_state.json
+model_blacklist.json
 node_modules/
 *.log
 .DS_Store

@@ -32,6 +32,7 @@ const PROXY_PORT = 15721;
 const CONFIG_PATH = path.join(process.env.USERPROFILE || '~', '.codex', 'config.toml');
 const MODEL_STATE_PATH = path.join(__dirname, 'model_state.json');
 const MODEL_LIST_PATH = path.join(__dirname, 'models.json');
+const MODEL_BLACKLIST_PATH = path.join(__dirname, 'model_blacklist.json');
 const DEBUG = (process.env.DEBUG || '').toLowerCase() === 'true';
 
 const PROXY_API_BASE = 'http://127.0.0.1:15721/v1';
@@ -41,7 +42,15 @@ function stripProxyConfig() {
         if (!fs.existsSync(CONFIG_PATH)) return;
         let content = fs.readFileSync(CONFIG_PATH, 'utf-8');
         const before = content;
+        // Remove old api_base_url format (backward compatible)
         content = content.replace(/^api_base_url\s*=.*\n?/gm, '');
+        // Remove model_provider-based format
+        content = content.replace(/^model_provider\s*=\s*"[^"]*"\n?/gm, '');
+        content = content.replace(/^\[model_providers\.nvidia-proxy\]\n?/gm, '');
+        content = content.replace(/^name\s*=\s*"NVIDIA NIM Proxy"\n?/gm, '');
+        content = content.replace(/^base_url\s*=\s*"[^"]*"\n?/gm, '');
+        content = content.replace(/^wire_api\s*=\s*"[^"]*"\n?/gm, '');
+        // Remove reasoning settings
         content = content.replace(/^(model_reasoning_effort|model_reasoning_summary|model_supports_reasoning_summaries|show_raw_agent_reasoning)\s*=.*\n?/gm, '');
         content = content.trimEnd();
         if (content !== before.trimEnd()) {
@@ -58,9 +67,25 @@ function writeProxyConfig(modelId) {
         if (fs.existsSync(CONFIG_PATH)) {
             content = fs.readFileSync(CONFIG_PATH, 'utf-8');
         }
+        // Remove old proxy formats
         content = content.replace(/^api_base_url\s*=.*\n?/gm, '');
+        content = content.replace(/^model_provider\s*=\s*"[^"]*"\n?/gm, '');
+        content = content.replace(/^\[model_providers\.nvidia-proxy\]\n?/gm, '');
+        content = content.replace(/^name\s*=\s*"NVIDIA NIM Proxy"\n?/gm, '');
+        content = content.replace(/^base_url\s*=\s*"[^"]*"\n?/gm, '');
+        content = content.replace(/^wire_api\s*=\s*"[^"]*"\n?/gm, '');
         content = content.replace(/^model\s*=\s*"[^"]*"\n?/gm, '');
-        content = 'api_base_url = "' + PROXY_API_BASE + '"\nmodel = "' + modelId + '"\n' + content;
+        content = content.trim();
+
+        // Write provider-based config
+        const providerConfig = 'model_provider = "nvidia-proxy"\n\n' +
+            '[model_providers.nvidia-proxy]\n' +
+            'name = "NVIDIA NIM Proxy"\n' +
+            'base_url = "http://127.0.0.1:15721/v1"\n' +
+            'wire_api = "responses"\n\n' +
+            'model = "' + modelId + '"\n';
+
+        content = providerConfig + '\n' + content;
 
         const isThinking = modelId.includes('thinking') || modelId.includes('deepseek-v4-pro') || modelId.includes('kimi-k2');
         if (isThinking) {
@@ -98,6 +123,35 @@ function loadModelsFromFile() {
     }
     return [];
 }
+
+function loadBlacklist() {
+    try {
+        if (fs.existsSync(MODEL_BLACKLIST_PATH)) {
+            return new Set(JSON.parse(fs.readFileSync(MODEL_BLACKLIST_PATH, 'utf-8')));
+        }
+    } catch (e) {
+        console.warn('[Proxy] Failed to load blacklist:', e.message);
+    }
+    return new Set();
+}
+
+function saveBlacklist(blacklist) {
+    try {
+        fs.writeFileSync(MODEL_BLACKLIST_PATH, JSON.stringify([...blacklist], null, 2), 'utf-8');
+    } catch (e) {
+        console.warn('[Proxy] Failed to save blacklist:', e.message);
+    }
+}
+
+function blacklistModel(modelId) {
+    if (!BLACKLISTED_MODELS.has(modelId)) {
+        BLACKLISTED_MODELS.add(modelId);
+        saveBlacklist(BLACKLISTED_MODELS);
+        console.warn('[Proxy] Blacklisted model:', modelId);
+    }
+}
+
+let BLACKLISTED_MODELS = loadBlacklist();
 
 const BUILTIN_MODELS = [
     { id: 'deepseek-ai/deepseek-v4-pro', name: 'DeepSeek V4 Pro', desc: '1.6T MoE, 49B active, 1M ctx, Think/Non-Think hybrid', tags: ['coding', 'reasoning', 'agent'] },
@@ -444,6 +498,21 @@ function convertRequest(responsesBody) {
     if (chatBody.input && Array.isArray(chatBody.input)) {
         const messages = [];
         for (const item of chatBody.input) {
+            if (item.type === 'function_call') {
+                messages.push({
+                    role: 'assistant',
+                    content: null,
+                    tool_calls: [{
+                        id: item.call_id || item.id || '',
+                        type: 'function',
+                        function: {
+                            name: item.name || '',
+                            arguments: item.arguments || '{}'
+                        }
+                    }]
+                });
+                continue;
+            }
             if (item.type === 'function_call_output') {
                 messages.push({
                     role: 'tool',
@@ -558,6 +627,10 @@ function convertRequest(responsesBody) {
                 return null;
             })
             .filter(Boolean);
+        if (chatBody.tools.length > 0) {
+            // Suggest tool usage but don't force it — "required" causes infinite loops
+            chatBody.tool_choice = 'auto';
+        }
     }
 
     if (chatBody.max_output_tokens !== undefined) {
@@ -1873,18 +1946,23 @@ const proxyServer = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && req.url === '/api/models') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ current: currentModel, models: MODELS }));
+        const filtered = MODELS.filter(m => !BLACKLISTED_MODELS.has(m.id));
+        res.end(JSON.stringify({ current: currentModel, models: filtered }));
         return;
     }
 
     if (req.method === 'GET' && req.url === '/api/models/fetch') {
+        // Clear blacklist on refresh — re-test previously blocked models
+        BLACKLISTED_MODELS.clear();
+        saveBlacklist(BLACKLISTED_MODELS);
         fetchNvidiaModels().then(models => {
-            MODELS = models;
+            MODELS = models.filter(m => !BLACKLISTED_MODELS.has(m.id));
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ current: currentModel, models, live: true }));
+            res.end(JSON.stringify({ current: currentModel, models: MODELS, live: true }));
         }).catch(e => {
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ current: currentModel, models: MODELS, live: false, error: e.message }));
+            const filtered = MODELS.filter(m => !BLACKLISTED_MODELS.has(m.id));
+            res.end(JSON.stringify({ current: currentModel, models: filtered, live: false, error: e.message }));
         });
         return;
     }
@@ -1976,6 +2054,7 @@ const proxyServer = http.createServer(async (req, res) => {
                 log('Model:', chatBody.model);
                 log('Stream:', responsesBody.stream);
                 log('Tools:', chatBody.tools ? chatBody.tools.length : 0);
+                log('Tool choice:', chatBody.tool_choice);
                 log('ChatBody keys:', Object.keys(chatBody).join(','));
                 if (DEBUG && responsesBody.stream) {
                     log('ChatBody (truncated):', chatBodyStr.substring(0, 500));
@@ -2024,10 +2103,17 @@ const proxyServer = http.createServer(async (req, res) => {
                         res.write('data: [DONE]\n\n');
                         res.end();
                     }
+                    // Blacklist models that return 404 (not available for this account)
+                    if (statusCode === 404) {
+                        blacklistModel(chatBody.model);
+                    }
                 }
 
             } catch (e) {
                 log('Error:', e.message);
+                if (e.statusCode === 404 && chatBody && chatBody.model) {
+                    blacklistModel(chatBody.model);
+                }
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: e.message }));
             }
