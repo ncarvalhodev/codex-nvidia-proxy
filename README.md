@@ -26,8 +26,11 @@ Codex（CLI / 桌面版）与 NVIDIA NIM 之间的透明代理，让 Codex 免�
 | GLM-5.1 | 智谱旗舰, agentic & 长程推理 |
 | Gemma 4 31B | Google 稠密模型, 编码 & agentic |
 | Nemotron Super 120B | NVIDIA 混合 Mamba-Transformer, 1M ctx, tool calling |
+| Mistral Large 3 | 675B 旗舰, 编码 & tool calling |
 | Mistral Medium 3.5 | 128B, 编码 & agentic |
 | Nemotron Super 49B | NVIDIA 调优, 编码 & tool calling |
+| Llama 3.2 90B Vision | 最大视觉模型, 图片理解+编码 |
+| Phi-4 Multimodal | 多模态推理, 视觉+音频+文本 |
 | Step 3.5 Flash | 200B MoE, frontier agentic |
 | Llama 3.1 405B | 最大稠密模型, 强指令跟随 |
 | Seed-OSS 36B | 字节跳动, 512K ctx, 长上下文推理 & agentic |
