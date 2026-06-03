@@ -628,7 +628,6 @@ function convertRequest(responsesBody) {
             })
             .filter(Boolean);
         if (chatBody.tools.length > 0) {
-            // Suggest tool usage but don't force it — "required" causes infinite loops
             chatBody.tool_choice = 'auto';
         }
     }
@@ -1352,6 +1351,13 @@ async function streamSingleRound(res, chatBody, state, roundIndex) {
         const reasoning = extractReasoningText(delta);
         const textDelta = delta.content || '';
         const tcDeltas = normalizeToolCalls(delta.tool_calls);
+
+        // Log first few deltas to debug model output format
+        if (state.seq < 15) {
+            const keys = Object.keys(delta).filter(k => delta[k] !== undefined && delta[k] !== '' && delta[k] !== null);
+            const tcInfo = tcDeltas.length > 0 ? ' tc=[' + tcDeltas.map(t => t.name || '(no name)').join(',') + ']' : '';
+            log('STREAM_R' + roundIndex + ': delta keys=[' + keys.join(',') + ']' + (textDelta ? ' content="' + textDelta.substring(0, 80).replace(/\n/g, '\\n') + '"' : '') + (reasoning ? ' reasoning="' + reasoning.substring(0, 80).replace(/\n/g, '\\n') + '"' : '') + tcInfo);
+        }
 
         if (DEBUG) {
             const deltaKeys = [];
