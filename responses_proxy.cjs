@@ -33,6 +33,7 @@ const CONFIG_PATH = path.join(process.env.USERPROFILE || '~', '.codex', 'config.
 const MODEL_STATE_PATH = path.join(__dirname, 'model_state.json');
 const MODEL_LIST_PATH = path.join(__dirname, 'models.json');
 const MODEL_BLACKLIST_PATH = path.join(__dirname, 'model_blacklist.json');
+const MODEL_CATALOG_PATH = path.join(process.env.USERPROFILE || '~', '.codex', 'model-catalog.json');
 const DEBUG = (process.env.DEBUG || '').toLowerCase() === 'true';
 
 const PROXY_API_BASE = 'http://127.0.0.1:15721/v1';
@@ -50,6 +51,8 @@ function stripProxyConfig() {
         content = content.replace(/^name\s*=\s*"NVIDIA NIM Proxy"\n?/gm, '');
         content = content.replace(/^base_url\s*=\s*"[^"]*"\n?/gm, '');
         content = content.replace(/^wire_api\s*=\s*"[^"]*"\n?/gm, '');
+        // Remove model catalog
+        content = content.replace(/^model_catalog_json\s*=.*\n?/gm, '');
         // Remove reasoning settings
         content = content.replace(/^(model_reasoning_effort|model_reasoning_summary|model_supports_reasoning_summaries|show_raw_agent_reasoning)\s*=.*\n?/gm, '');
         content = content.trimEnd();
@@ -82,7 +85,8 @@ function writeProxyConfig(modelId) {
             '[model_providers.nvidia-proxy]\n' +
             'name = "NVIDIA NIM Proxy"\n' +
             'base_url = "http://127.0.0.1:15721/v1"\n' +
-            'wire_api = "responses"\n\n' +
+            'wire_api = "responses"\n' +
+            'model_catalog_json = "model-catalog.json"\n\n' +
             'model = "' + modelId + '"\n';
 
         content = providerConfig + '\n' + content;
@@ -95,6 +99,38 @@ function writeProxyConfig(modelId) {
         fs.writeFileSync(CONFIG_PATH, content, 'utf-8');
     } catch (e) {
         console.warn('[Proxy] Failed to write proxy config:', e.message);
+    }
+}
+
+function writeModelCatalog(models) {
+    try {
+        const data = (models || BUILTIN_MODELS).map(m => {
+            const isThinking = /thinking|deepseek-v4-pro|kimi-k2/.test(m.id);
+            const isVision = /vision|multimodal|vl\b|omni/.test(m.id);
+            return {
+                id: m.id,
+                object: 'model',
+                created: 1704067200,
+                owned_by: 'nvidia-nim',
+                metadata: {
+                    display_name: m.name,
+                    description: m.desc || '',
+                    context_window: isThinking ? 1048576 : 131072,
+                    input_modalities: isVision ? ['text', 'image'] : ['text'],
+                    supported_reasoning_efforts: isThinking ? ['high', 'medium', 'low'] : [],
+                    supports_reasoning_summaries: isThinking,
+                    default_reasoning_effort: isThinking ? 'high' : null,
+                    prefer_websockets: false,
+                    supports_parallel_tool_calls: true,
+                    supported_in_api: true,
+                    priority: 100
+                }
+            };
+        });
+        fs.writeFileSync(MODEL_CATALOG_PATH, JSON.stringify({ object: 'list', data }, null, 2), 'utf-8');
+        console.log('[Proxy] Model catalog written:', data.length, 'models');
+    } catch (e) {
+        console.warn('[Proxy] Failed to write model catalog:', e.message);
     }
 }
 
@@ -197,6 +233,7 @@ let currentModel = getCurrentModelFromFile();
 
 stripProxyConfig();
 writeProxyConfig(currentModel || 'deepseek-ai/deepseek-v4-pro');
+writeModelCatalog();
 
 function getCurrentModelFromFile() {
     try {
@@ -1961,6 +1998,7 @@ const proxyServer = http.createServer(async (req, res) => {
         saveBlacklist(BLACKLISTED_MODELS);
         fetchNvidiaModels().then(models => {
             MODELS = models.filter(m => !BLACKLISTED_MODELS.has(m.id));
+            writeModelCatalog(MODELS);
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ current: currentModel, models: MODELS, live: true }));
         }).catch(e => {
