@@ -135,7 +135,7 @@ Invoke-WebRequest -Uri http://127.0.0.1:15721/v1/responses -Method POST -Body $b
 
 ```
 codex-nvidia-proxy/
-├── responses_proxy.cjs   # 主代理 (~2150 行单文件，零依赖)
+├── responses_proxy.cjs   # 主代理 (单文件，零依赖)
 ├── models.json           # 模型列表配置
 ├── model_state.json      # 当前选中模型（动态生成）
 ├── model_blacklist.json  # 不可用模型黑名单（动态生成）
