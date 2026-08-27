@@ -53,6 +53,8 @@ function stripProxyConfig() {
         content = content.replace(/^wire_api\s*=\s*"[^"]*"\n?/gm, '');
         // Remove model catalog
         content = content.replace(/^model_catalog_json\s*=.*\n?/gm, '');
+        // Remove model line
+        content = content.replace(/^model\s*=\s*"[^"]*"\n?/gm, '');
         // Remove reasoning settings
         content = content.replace(/^(model_reasoning_effort|model_reasoning_summary|model_supports_reasoning_summaries|show_raw_agent_reasoning)\s*=.*\n?/gm, '');
         content = content.trimEnd();
