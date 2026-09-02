@@ -2162,8 +2162,10 @@ const proxyServer = http.createServer(async (req, res) => {
                 if (e.statusCode === 404 && chatBody && chatBody.model) {
                     blacklistModel(chatBody.model);
                 }
-                res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: e.message }));
+                if (!res.headersSent) {
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: e.message }));
+                }
             }
         });
     } else {
@@ -2181,8 +2183,10 @@ const proxyServer = http.createServer(async (req, res) => {
         });
         passthrough.on('error', (e) => {
             log('Passthrough error:', e.message);
-            res.writeHead(502);
-            res.end('Bad Gateway');
+            if (!res.headersSent) {
+                res.writeHead(502);
+                res.end('Bad Gateway');
+            }
         });
         req.pipe(passthrough);
     }
