@@ -664,8 +664,10 @@ function convertRequest(responsesBody) {
                 return null;
             })
             .filter(Boolean);
-        if (chatBody.tools.length > 0) {
+        if (chatBody.tools && chatBody.tools.length > 0) {
             chatBody.tool_choice = 'auto';
+        } else {
+            delete chatBody.tool_choice;
         }
     }
 
