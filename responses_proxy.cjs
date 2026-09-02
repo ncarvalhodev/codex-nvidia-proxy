@@ -669,6 +669,8 @@ function convertRequest(responsesBody) {
         } else {
             delete chatBody.tool_choice;
         }
+    } else {
+        delete chatBody.tool_choice;
     }
 
     if (chatBody.max_output_tokens !== undefined) {
